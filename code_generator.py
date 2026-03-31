@@ -122,9 +122,12 @@ def insert_after(p, text):
 def replace_content(doc, b, s, g):
     paras = doc.paragraphs
 
+    def normalize(text):
+        return text.lower().replace(" ", "").replace(".", "")
+
     def find(keyword):
         for i, p in enumerate(paras):
-            if keyword in p.text.lower().replace(" ", ""):
+            if keyword in normalize(p.text):
                 return i
         return None
 
@@ -132,9 +135,20 @@ def replace_content(doc, b, s, g):
     si = find("silverlayer")
     gi = find("goldlayer")
 
+    # ✅ SAFETY CHECK
+    if bi is None or si is None or gi is None:
+        raise Exception(
+            f"Heading not found in DOCX.\n"
+            f"Bronze: {bi}, Silver: {si}, Gold: {gi}\n"
+            f"Make sure headings like 'Bronze Layer', 'Silver Layer', 'Gold Layer' exist."
+        )
+
     def replace(start, end, content):
+        # delete old content
         for i in range(start + 1, end):
             delete_paragraph(paras[i])
+
+        # insert new SQL
         insert_after(paras[start], content)
 
     replace(bi, si, b)
