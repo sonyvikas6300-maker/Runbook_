@@ -119,26 +119,68 @@ def insert_after(p, text):
 
 
 # ---------------- REPLACE DOC ---------------- #
-def replace_content(doc, b, s, g):
+def replace_content(doc, bronze_sql, silver_sql, gold_sql):
     paras = doc.paragraphs
 
+    # ---------------- NORMALIZE ---------------- #
+    def normalize(text):
+        return text.lower().replace(" ", "").replace(".", "")
+
+    # ---------------- FIND HEADING ---------------- #
     def find(keyword):
+        keyword = normalize(keyword)
         for i, p in enumerate(paras):
-            if keyword in p.text.lower().replace(" ", ""):
+            if keyword in normalize(p.text):
                 return i
         return None
 
-    bi = find("bronzelayer")
-    si = find("silverlayer")
-    gi = find("goldlayer")
+    # Find section indexes
+    bronze_idx = find("bronzelayer")
+    silver_idx = find("silverlayer")
+    gold_idx = find("goldlayer")
 
-    def replace(start, end, content):
-        for i in range(start + 1, end):
-            delete_paragraph(paras[i])
-        insert_after(paras[start], content)
+    # ---------------- SAFETY CHECK ---------------- #
+    if bronze_idx is None or silver_idx is None or gold_idx is None:
+        raise Exception(
+            f"""
+❌ Heading not found in DOCX
 
-    replace(bi, si, b)
-    replace(si, gi, s)
-    replace(gi, len(paras), g)
+Found:
+Bronze: {bronze_idx}
+Silver: {silver_idx}
+Gold: {gold_idx}
+
+✔ Ensure headings exist like:
+- Bronze Layer
+- Silver Layer
+- Gold Layer
+"""
+        )
+
+    # ---------------- DELETE + INSERT ---------------- #
+    def replace_section(start_idx, end_idx, new_sql):
+        # delete old content safely (reverse to avoid index shift)
+        for i in range(end_idx - 1, start_idx, -1):
+            p = paras[i]._element
+            p.getparent().remove(p)
+
+        # insert new SQL after heading
+        new_p = paras[start_idx]._element
+        from docx.oxml import OxmlElement
+        from docx.text.paragraph import Paragraph
+
+        sql_block = new_sql.strip().split("\n")
+
+        for line in sql_block:
+            el = OxmlElement("w:p")
+            new_p.addnext(el)
+            para = Paragraph(el, paras[start_idx]._parent)
+            para.add_run(line)
+
+    # ---------------- REPLACE EACH LAYER ---------------- #
+    replace_section(bronze_idx, silver_idx, bronze_sql)
+    replace_section(silver_idx, gold_idx, silver_sql)
+    replace_section(gold_idx, len(paras), gold_sql)
 
     return doc
+
